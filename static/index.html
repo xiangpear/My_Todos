@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="Cache-Control" content="no-store, must-revalidate">
+        <title>My-Todos</title>
+        <link rel="stylesheet" type="text/css" href="./css/index.css" />
+        <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+        <script src="./js/jquery.js"></script>
+    </head>
+    <body>
+        <div id="app">
+            <!-- 遮罩 -->
+            <div class="mask" v-if="showMask"></div>
+            <!-- 弹窗 -->
+            <div class="popover" v-show="showPopover">
+                <span class="close" @click="closePopover">x</span>
+                <div class="title">待办事项</div>
+                <input type="text" v-model="content" ref="todoInput" @keyup.enter="confirm" placeholder="Todo......" />
+            </div>
+            <!-- 标题 -->
+            <h1 class="header">My-Todos</h1>
+            <!-- 暂无Todo -->
+            <div class="none" v-if="todolist.length <= 0">None Todos... <br /><br />Click The Add Button To Add A Todo Item.</div>
+            <!-- 主要内容 -->
+            <div class="main">
+                <ul class="row" v-for="(obj, index) in newList" :key="index">
+                    <div class="datetime">{{obj.datetime}}</div>
+                    <li class="list" v-for="(item, index1) in obj.list" :key="index1">
+                        <input type="checkbox" :checked="item.isFinished" @change="isChecked($event, item.Id)" />
+                        <input type="text" :title="item.content" disabled :value="item.content" />
+                        <img src="./images/xiugai.svg" alt="noImage" style="margin-right: 15px" @click="updateTodo(item)" />
+                        <img src="./images/shanchu.svg" alt="noImage" @click="deleteTodo(item)" />
+                    </li>
+                </ul>
+            </div>
+            <button class="add" @click="addTodo">+</button>
+        </div>
+    </body>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    content: '',
+                    showPopover: false,
+                    showMask: false,
+                    isUpdate: false,
+                    updateId: '',
+                    todolist: [],
+                    newList: []
+                };
+            },
+            mounted() {
+                $.get('/api/getTodoList', (res) => {
+                    if (res.state === 200) {
+                        this.todolist = res.data.length > 0 ? res.data : [];
+                        this.initTodoList();
+                    } else {
+                        console.log('error');
+                    }
+                });
+                // $.get({
+                //     url: '/api/getTodoList',
+                //     headers: {
+                //         'Content-Type': 'no-cache'
+                //     },
+                //     success: (res) => {
+                //         if (res.state === 200) {
+                //             this.todolist = res.data.length > 0 ? res.data : [];
+                //             this.initTodoList();
+                //         } else {
+                //             console.log('error');
+                //         }
+                //     },
+                //     error: (err) => {
+                //         console.error(err);
+                //     }
+                // })
+            },
+            methods: {
+                postTodoList() {
+                    $.post('/api/addTodo', { todoList: JSON.stringify(this.todolist) }, (res) => {
+                        if (res.state === 200) {
+                            console.log('sucess');
+                            this.initTodoList();
+                        } else {
+                            console.log('error');
+                        }
+                    });
+                },
+                isChecked(e, id) {
+                    if (e.target.checked) {
+                        this.todolist.find((item) => item.Id === id).isFinished = true;
+                    } else {
+                        this.todolist.find((item) => item.Id === id).isFinished = false;
+                    }
+                    this.postTodoList();
+                },
+                addTodo() {
+                    this.showPopover = true;
+                    this.showMask = true;
+                    this.$nextTick(() => {
+                        this.$refs.todoInput.focus();
+                    });
+                },
+                updateTodo(list) {
+                    this.showMask = true;
+                    this.showPopover = true;
+                    this.isUpdate = true;
+                    this.updateId = list.Id;
+                    this.$nextTick(() => {
+                        this.$refs.todoInput.focus();
+                        this.content = list.content;
+                    });
+                },
+                deleteTodo(list) {
+                    if (list.isFinished) {
+                        alert('已完成的任务不能删除！');
+                        return;
+                    }
+                    this.todolist = this.todolist.filter((item) => item.Id !== list.Id);
+                    this.postTodoList();
+                },
+                confirm() {
+                    if (this.isUpdate) {
+                        for (let i = 0; i < this.todolist.length; i++) {
+                            if (this.todolist[i].Id === this.updateId) {
+                                this.todolist[i].content = this.content;
+                                break;
+                            }
+                        }
+                    } else {
+                        const currentDate = new Date();
+                        const year = currentDate.getFullYear();
+                        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+                        const day = String(currentDate.getDate()).padStart(2, '0');
+                        const formattedDate = `${year}-${month}-${day}`;
+
+                        const AddId = this.todolist.length > 0 ? this.todolist[this.todolist.length - 1].Id + 1 : 0;
+                        this.todolist.push({
+                            Id: AddId,
+                            content: this.content,
+                            isFinished: false,
+                            datetime: formattedDate
+                        });
+                    }
+
+                    this.postTodoList();
+                    this.content = '';
+                    this.showMask = false;
+                    this.showPopover = false;
+                    this.isUpdate = false;
+                },
+                closePopover() {
+                    this.content = '';
+                    this.showPopover = false;
+                    this.showMask = false;
+                    this.isUpdate = false;
+                },
+                initTodoList() {
+                    if (this.todolist.length === 0) {
+                        return;
+                    }
+
+                    // 按照 datetime 属性进行分组
+                    const groupedByDatetime = this.todolist.reduce((acc, obj) => {
+                        const key = obj.datetime;
+                        if (!acc[key]) {
+                            acc[key] = [];
+                        }
+                        acc[key].push(obj);
+                        return acc;
+                    }, {});
+
+                    // 对每个分组进行排序并创建新对象
+                    const sortedArrays = Object.keys(groupedByDatetime).map((key) => {
+                        const sortedArray = groupedByDatetime[key].sort((a, b) => b.Id - a.Id);
+                        return {
+                            datetime: key,
+                            list: sortedArray
+                        };
+                    });
+
+                    // 对所有新对象按照 datetime 属性进行排序
+                    this.newList = sortedArrays.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+                }
+            }
+        }).mount('#app');
+    </script>
+</html>
